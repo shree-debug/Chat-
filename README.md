@@ -2,11 +2,11 @@
 Ephemeral photo-snap messaging. Android app (`mobile/`) + serverless backend on Cloudflare (`worker/`).
 
 ## Implemented (backend covered by 11 automated tests; app NOT yet run on a device)
-**Backend:** accounts (PBKDF2, signed tokens), friends, view-once snaps with R2 storage and atomic one-view guarantee, 24h stories + viewer list, chat, realtime via WebSocket Durable Objects, push-notification fallback (Expo push), block, report (+ admin report list), delete account (removes media), rate limiting, upload size + file-signature validation, scheduled cleanup, privacy-policy and delete-account web pages.
+**Backend:** accounts (PBKDF2, signed tokens), friends, view-once photo snaps (stored in D1, 1.4 MB max, no R2 needed) and atomic one-view guarantee, 24h stories + viewer list, chat, realtime via WebSocket Durable Objects, push-notification fallback (Expo push), block, report (+ admin report list), delete account (removes media), rate limiting, upload size + file-signature validation, scheduled cleanup, privacy-policy and delete-account web pages.
 **App:** sign up/login, camera, snaps, stories, friends, chat with live updates, block/report, settings (privacy link, logout, delete account).
 
 ## Planned (not built)
-Video capture in the app, filters/lenses, Snap Map, Spotlight, groups, calls, streaks, profiles/avatars, screenshot alerts, end-to-end encryption, automated moderation, admin dashboard UI, iOS app.
+Video snaps (need R2 or other object storage), video capture, filters/lenses, Snap Map, Spotlight, groups, calls, streaks, profiles/avatars, screenshot alerts, end-to-end encryption, automated moderation, admin dashboard UI, iOS app.
 
 ## Deploy backend (phone-friendly, all in the browser)
 1. Cloudflare account (dash.cloudflare.com). Note your **Account ID** (Workers & Pages overview page). Open Workers & Pages once so your `*.workers.dev` subdomain is registered. For production use the Workers Paid plan (required for heavier use; check Cloudflare pricing).

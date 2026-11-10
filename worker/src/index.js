@@ -1,7 +1,7 @@
-// ZYNQ API on Cloudflare Workers (D1 + R2 + Durable Objects). Built by Nexoria.
+// ZYNQ API on Cloudflare Workers (D1 + Durable Objects). Photos are stored in D1 (no R2 needed). Built by Nexoria.
 export { Hub } from './hub.js';
 
-const DAY = 86400000, MAX_MEDIA = 10 * 1024 * 1024, TOKEN_TTL = 7 * DAY;
+const DAY = 86400000, MAX_MEDIA = 1_400_000 /* base64 must fit D1's 2 MB row limit */, TOKEN_TTL = 7 * DAY;
 const enc = new TextEncoder();
 const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64u = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
@@ -51,19 +51,23 @@ const userByName = (db, n) => db.one('SELECT id, username FROM users WHERE usern
 const canInteract = async (db, a, b) => (await areFriends(db, a, b)) && !(await blocked(db, a, b));
 
 // ---------- media ----------
-const SIGS = [['image/jpeg', 0, [0xff, 0xd8, 0xff]], ['image/png', 0, [0x89, 0x50, 0x4e, 0x47]], ['image/webp', 8, [0x57, 0x45, 0x42, 0x50]], ['video/mp4', 4, [0x66, 0x74, 0x79, 0x70]]];
+const SIGS = [['image/jpeg', 0, [0xff, 0xd8, 0xff]], ['image/png', 0, [0x89, 0x50, 0x4e, 0x47]], ['image/webp', 8, [0x57, 0x45, 0x42, 0x50]]];
 async function readMedia(req) {
   const mime = (req.headers.get('content-type') || '').split(';')[0];
   if (!SIGS.some((s) => s[0] === mime)) throw new HttpError(415, 'unsupported media type');
-  if (Number(req.headers.get('content-length') || 0) > MAX_MEDIA) throw new HttpError(413, 'file too large (10 MB max)');
+  if (Number(req.headers.get('content-length') || 0) > MAX_MEDIA) throw new HttpError(413, 'photo too large (1.4 MB max)');
   const buf = await req.arrayBuffer();
   if (!buf.byteLength) throw new HttpError(400, 'empty body');
-  if (buf.byteLength > MAX_MEDIA) throw new HttpError(413, 'file too large (10 MB max)');
+  if (buf.byteLength > MAX_MEDIA) throw new HttpError(413, 'photo too large (1.4 MB max)');
   const [, off, sig] = SIGS.find((s) => s[0] === mime); const u = new Uint8Array(buf);
   if (!sig.every((b, i) => u[off + i] === b)) throw new HttpError(415, 'file content does not match its type');
   return { buf, mime };
 }
-async function delKeys(env, keys) { for (let i = 0; i < keys.length; i += 500) await env.MEDIA.delete(keys.slice(i, i + 500)); }
+const toB64 = (buf) => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); };
+const fromB64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const putMedia = (db, key, buf) => db.run('INSERT INTO media(key, data, created) VALUES(?,?,?)', key, toB64(buf), Date.now());
+const getMedia = async (db, key) => { const r = await db.one('SELECT data FROM media WHERE key=?', key); return r ? fromB64(r.data) : null; };
+async function delKeys(env, keys) { const db = mk(env); for (let i = 0; i < keys.length; i += 50) { const c = keys.slice(i, i + 50); await db.run(`DELETE FROM media WHERE key IN (${c.map(() => '?').join(',')})`, ...c); } }
 
 // ---------- realtime + push ----------
 async function sendPush(env, db, uid, title, body) {
@@ -222,7 +226,7 @@ async function handle(req, env, ctx) {
     if (!to || !(await canInteract(db, me.id, to.id))) throw new HttpError(403, 'recipient must be a friend');
     const { buf, mime } = await readMedia(req);
     const id = crypto.randomUUID(), key = 'm/' + crypto.randomUUID(), now = Date.now();
-    await env.MEDIA.put(key, buf, { httpMetadata: { contentType: mime } });
+    await putMedia(db, key, buf);
     await db.run('INSERT INTO snaps(id, sender, recipient, key, mime, caption, created, expires) VALUES(?,?,?,?,?,?,?,?)', id, me.id, to.id, key, mime, (url.searchParams.get('caption') || '').slice(0, 200), now, now + DAY);
     await notify(env, ctx, db, to.id, 'snap', { id, from: me.username }, `${me.username} sent you a snap`);
     return json({ id }, 201);
@@ -236,10 +240,9 @@ async function handle(req, env, ctx) {
     if (s.viewed || s.expires < Date.now() || !s.key) throw new HttpError(410, 'snap gone');
     const claim = await db.run('UPDATE snaps SET viewed=?, key=NULL WHERE id=? AND viewed IS NULL', Date.now(), s.id); // atomic claim: only one viewer wins
     if (!claim.meta.changes) throw new HttpError(410, 'snap gone');
-    const obj = await env.MEDIA.get(s.key);
-    if (!obj) throw new HttpError(410, 'snap gone');
-    const body = await obj.arrayBuffer();
-    await env.MEDIA.delete(s.key);
+    const body = await getMedia(db, s.key);
+    if (!body) throw new HttpError(410, 'snap gone');
+    await delKeys(env, [s.key]);
     await notify(env, ctx, db, s.sender, 'snap_opened', { id: s.id, by: me.username }, null);
     return new Response(body, { headers: { 'content-type': s.mime, 'cache-control': 'no-store' } });
   }
@@ -248,7 +251,7 @@ async function handle(req, env, ctx) {
   if (m === 'POST' && p === '/stories') {
     const { buf, mime } = await readMedia(req);
     const id = crypto.randomUUID(), key = 'm/' + crypto.randomUUID(), now = Date.now();
-    await env.MEDIA.put(key, buf, { httpMetadata: { contentType: mime } });
+    await putMedia(db, key, buf);
     await db.run('INSERT INTO stories VALUES(?,?,?,?,?,?,?)', id, me.id, key, mime, (url.searchParams.get('caption') || '').slice(0, 200), now, now + DAY);
     return json({ id }, 201);
   }
@@ -258,10 +261,10 @@ async function handle(req, env, ctx) {
   if (m === 'GET' && (mt = p.match(/^\/stories\/([\w-]+)\/media$/))) {
     const s = await db.one('SELECT * FROM stories WHERE id=? AND expires > ?', mt[1], Date.now());
     if (!s || (s.owner !== me.id && !(await canInteract(db, me.id, s.owner)))) throw new HttpError(404, 'not found');
-    const obj = await env.MEDIA.get(s.key);
-    if (!obj) throw new HttpError(404, 'not found');
+    const body = await getMedia(db, s.key);
+    if (!body) throw new HttpError(404, 'not found');
     if (s.owner !== me.id) await db.run('INSERT OR IGNORE INTO story_views VALUES(?,?,?)', s.id, me.id, Date.now());
-    return new Response(await obj.arrayBuffer(), { headers: { 'content-type': s.mime, 'cache-control': 'private, max-age=300' } });
+    return new Response(body, { headers: { 'content-type': s.mime, 'cache-control': 'private, max-age=300' } });
   }
   if (m === 'GET' && (mt = p.match(/^\/stories\/([\w-]+)\/viewers$/))) {
     if (!(await db.one('SELECT 1 x FROM stories WHERE id=? AND owner=?', mt[1], me.id))) throw new HttpError(404, 'not found');

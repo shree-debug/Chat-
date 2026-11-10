@@ -16,11 +16,10 @@ jobs:
         with: { node-version: 22 }
       - name: Run tests
         run: npm test
-      - name: Create database + media bucket (safe to re-run)
+      - name: Create database (safe to re-run)
         run: |
-          npx --yes wrangler@4 d1 create zynq-db || true
-          npx --yes wrangler@4 r2 bucket create zynq-media || true
-          ID=$(npx --yes wrangler@4 d1 info zynq-db --json | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
+          npx --yes wrangler@4 d1 create zynq-db || echo "database already exists"
+          ID=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database?name=zynq-db" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const r=JSON.parse(s).result||[];const d=r.find(x=>x.name==='zynq-db');console.log(d?d.uuid:'')})")
           test -n "$ID" || { echo "Could not find D1 database id"; exit 1; }
           sed -i "s/REPLACE_ME/$ID/" wrangler.toml
       - name: Apply database migrations

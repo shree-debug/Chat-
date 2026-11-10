@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, Image, StyleSheet, Alert, StatusBar, KeyboardAvoidingView, Platform, SafeAreaView, ActivityIndicator, Linking } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as api from './src/api';
 
 const C = { bg: '#0B0B12', card: '#171722', accent: '#7C5CFF', text: '#F4F4FA', mute: '#8A8AA3', err: '#FF5C7A' };
@@ -61,7 +62,7 @@ function CameraTab({ friends }) {
       <CameraView ref={cam} style={s.fill} facing={front ? 'front' : 'back'} />
       <View style={s.shutterRow}>
         <Btn title="Flip" kind="ghost" onPress={() => setFront(!front)} />
-        <TouchableOpacity style={s.shutter} onPress={async () => { try { const r = await cam.current.takePictureAsync({ quality: 0.6 }); setShot(r.uri); } catch (e) { fail(e); } }} />
+        <TouchableOpacity style={s.shutter} onPress={async () => { try { const r = await cam.current.takePictureAsync({ quality: 0.7 }); const m = await ImageManipulator.manipulateAsync(r.uri, [{ resize: { width: 1080 } }], { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG }); setShot(m.uri); } catch (e) { fail(e); } }} />
         <View style={{ width: 70 }} />
       </View>
     </View>

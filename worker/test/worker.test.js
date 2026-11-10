@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import worker, { sweep } from '../src/index.js';
-import { makeEnv } from './helpers.js';
+import { makeEnv, mediaCount } from './helpers.js';
 
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const ctx = { waitUntil: () => {} };
@@ -56,12 +56,12 @@ test('snap: friends only, magic-byte check, view-once, media deleted from storag
   assert.equal((await call('POST', '/snaps?to=sue', { token: a, raw: png, mime: 'text/html' })).status, 415);
   assert.equal((await call('POST', '/snaps?to=sue', { token: a, raw: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]) })).status, 415);
   const { body } = await call('POST', '/snaps?to=sue&caption=hi', { token: a, raw: png });
-  assert.equal(env.MEDIA.m.size, 1);
+  assert.equal(mediaCount(env), 1);
   assert.equal((await call('GET', '/snaps/inbox', { token: b })).body.length, 1);
   assert.equal((await call('GET', `/snaps/${body.id}/media`, { token: c })).status, 404);
   const v1 = await call('GET', `/snaps/${body.id}/media`, { token: b });
   assert.equal(v1.status, 200); assert.deepEqual([...v1.body], [...png]);
-  assert.equal(env.MEDIA.m.size, 0);
+  assert.equal(mediaCount(env), 0);
   assert.equal((await call('GET', `/snaps/${body.id}/media`, { token: b })).status, 410);
   assert.equal((await call('GET', '/snaps/inbox', { token: b })).body.length, 0);
 });
@@ -70,7 +70,7 @@ test('media size limit', async () => {
   const { call, reg, friends } = client(makeEnv());
   const [a, b] = [await reg('big'), await reg('bob')];
   await friends('big', a, 'bob', b);
-  const huge = new Uint8Array(10 * 1024 * 1024 + 1); huge.set(png);
+  const huge = new Uint8Array(1_400_001); huge.set(png);
   assert.equal((await call('POST', '/snaps?to=bob', { token: a, raw: huge })).status, 413);
 });
 
@@ -86,7 +86,7 @@ test('stories: friends only, viewers tracked, expiry sweep removes media', async
   assert.deepEqual((await call('GET', `/stories/${body.id}/viewers`, { token: a })).body, ['tim']);
   assert.equal((await call('GET', `/stories/${body.id}/viewers`, { token: b })).status, 404);
   await sweep(env, Date.now() + 25 * 3600 * 1000);
-  assert.equal(env.MEDIA.m.size, 0);
+  assert.equal(mediaCount(env), 0);
   assert.equal((await call('GET', '/stories', { token: b })).body.length, 0);
 });
 
@@ -143,10 +143,10 @@ test('delete account removes user data and media', async () => {
   await friends('dan', a, 'dee', b);
   await call('POST', '/snaps?to=dee', { token: a, raw: png }); await call('POST', '/stories', { token: a, raw: png });
   await call('POST', '/messages', { token: a, json: { to: 'dee', body: 'bye' } });
-  assert.equal(env.MEDIA.m.size, 2);
+  assert.equal(mediaCount(env), 2);
   assert.equal((await call('DELETE', '/me', { token: a, json: { password: 'nope12345' } })).status, 401);
   assert.equal((await call('DELETE', '/me', { token: a, json: { password: 'password123' } })).status, 200);
-  assert.equal(env.MEDIA.m.size, 0);
+  assert.equal(mediaCount(env), 0);
   assert.equal((await call('GET', '/me', { token: a })).status, 401);
   assert.deepEqual((await call('GET', '/friends', { token: b })).body.friends, []);
   assert.equal(env.DB.raw.prepare('SELECT COUNT(*) c FROM messages').get().c, 0);
