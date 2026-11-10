@@ -25,6 +25,7 @@ jobs:
           test -n "$API_URL" || { echo "Create repo variable API_URL (your https backend URL)"; exit 1; }
           node -e "const f=require('fs');const j=JSON.parse(f.readFileSync('app.json','utf8'));j.expo.extra.apiUrl=process.env.API_URL;f.writeFileSync('app.json',JSON.stringify(j,null,2))"
       - run: npm install
+      - run: npx expo install expo-asset
       - run: npx expo install --fix
       - run: npx expo prebuild --platform android --no-install
       - name: Build APK
