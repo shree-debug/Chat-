@@ -1,0 +1,12 @@
+CREATE TABLE users(id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, pass TEXT NOT NULL, created INTEGER NOT NULL);
+CREATE TABLE friends(requester INTEGER NOT NULL, addressee INTEGER NOT NULL, status TEXT NOT NULL, PRIMARY KEY(requester, addressee));
+CREATE TABLE blocks(blocker INTEGER NOT NULL, blocked INTEGER NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(blocker, blocked));
+CREATE TABLE snaps(id TEXT PRIMARY KEY, sender INTEGER NOT NULL, recipient INTEGER NOT NULL, key TEXT, mime TEXT, caption TEXT, created INTEGER NOT NULL, expires INTEGER NOT NULL, viewed INTEGER);
+CREATE INDEX snaps_recipient ON snaps(recipient, viewed);
+CREATE TABLE stories(id TEXT PRIMARY KEY, owner INTEGER NOT NULL, key TEXT NOT NULL, mime TEXT, caption TEXT, created INTEGER NOT NULL, expires INTEGER NOT NULL);
+CREATE TABLE story_views(story TEXT NOT NULL, viewer INTEGER NOT NULL, at INTEGER, PRIMARY KEY(story, viewer));
+CREATE TABLE messages(id INTEGER PRIMARY KEY, sender INTEGER NOT NULL, recipient INTEGER NOT NULL, body TEXT NOT NULL, created INTEGER NOT NULL, seen INTEGER);
+CREATE INDEX messages_pair ON messages(sender, recipient);
+CREATE TABLE reports(id INTEGER PRIMARY KEY, reporter INTEGER NOT NULL, target TEXT NOT NULL, kind TEXT NOT NULL, ref TEXT, reason TEXT NOT NULL, created INTEGER NOT NULL);
+CREATE TABLE push_tokens(user INTEGER NOT NULL, token TEXT PRIMARY KEY, created INTEGER NOT NULL);
+CREATE TABLE rate(k TEXT NOT NULL, w INTEGER NOT NULL, n INTEGER NOT NULL, PRIMARY KEY(k, w));

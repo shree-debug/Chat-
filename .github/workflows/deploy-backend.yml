@@ -1,0 +1,37 @@
+name: Deploy backend (Cloudflare)
+on:
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Run tests
+        run: npm test
+      - name: Create database + media bucket (safe to re-run)
+        run: |
+          npx --yes wrangler@4 d1 create zynq-db || true
+          npx --yes wrangler@4 r2 bucket create zynq-media || true
+          ID=$(npx --yes wrangler@4 d1 info zynq-db --json | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
+          test -n "$ID" || { echo "Could not find D1 database id"; exit 1; }
+          sed -i "s/REPLACE_ME/$ID/" wrangler.toml
+      - name: Apply database migrations
+        run: npx --yes wrangler@4 d1 migrations apply zynq-db --remote
+      - name: Deploy Worker
+        run: npx --yes wrangler@4 deploy
+      - name: Set secrets
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          test -n "$JWT_SECRET" && test -n "$ADMIN_TOKEN" || { echo "Add JWT_SECRET and ADMIN_TOKEN repo secrets"; exit 1; }
+          printf %s "$JWT_SECRET" | npx --yes wrangler@4 secret put JWT_SECRET
+          printf %s "$ADMIN_TOKEN" | npx --yes wrangler@4 secret put ADMIN_TOKEN

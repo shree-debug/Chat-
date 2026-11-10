@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "ZYNQ",
+    "slug": "zynq",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "ZYNQ needs the camera to take snaps."
+        }
+      ],
+      "expo-secure-store",
+      "expo-notifications"
+    ],
+    "android": {
+      "package": "com.nexoria.zynq",
+      "versionCode": 1,
+      "permissions": [
+        "CAMERA",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "extra": {
+      "apiUrl": "https://zynq-api.YOUR-SUBDOMAIN.workers.dev"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+name = "zynq-api"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "zynq-db"
+database_id = "REPLACE_ME"   # filled in automatically by the deploy workflow
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "zynq-media"
+
+[durable_objects]
+bindings = [{ name = "HUB", class_name = "Hub" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Hub"]
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+CONTACT_EMAIL = "support@example.com"   # CHANGE: shown in privacy policy

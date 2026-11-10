@@ -1,0 +1,37 @@
+name: Android test APK
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Set backend URL
+        env:
+          API_URL: ${{ vars.API_URL }}
+        run: |
+          test -n "$API_URL" || { echo "Create repo variable API_URL (your https backend URL)"; exit 1; }
+          node -e "const f=require('fs');const j=JSON.parse(f.readFileSync('app.json','utf8'));j.expo.extra.apiUrl=process.env.API_URL;f.writeFileSync('app.json',JSON.stringify(j,null,2))"
+      - run: npm install
+      - run: npx expo install --fix
+      - run: npx expo prebuild --platform android --no-install
+      - name: Build APK
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+      - run: cp android/app/build/outputs/apk/release/app-release.apk zynq-test.apk
+      - name: Publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "test-${{ github.run_number }}" zynq-test.apk --title "ZYNQ test build ${{ github.run_number }}" --notes "Android test APK" --prerelease
